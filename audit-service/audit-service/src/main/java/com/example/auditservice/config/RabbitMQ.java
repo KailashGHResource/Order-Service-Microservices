@@ -1,4 +1,4 @@
-package com.example.auditservice.config;
+package com.example.auditservice.config; // Replace with your actual config package
 
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.support.converter.Jackson2JavaTypeMapper;
@@ -11,15 +11,20 @@ import org.springframework.context.annotation.Configuration;
 public class RabbitMQ {
 
     public static final String EXCHANGE_NAME = "leave.exchange";
+
+    // Employee constants
     public static final String AUDIT_QUEUE = "audit.employee.created.queue";
     public static final String ROUTING_KEY = "employee.created.key";
+
+    // --- NEW: Leave constants ---
+    public static final String AUDIT_LEAVE_QUEUE = "audit.leave.applied.queue";
+    public static final String LEAVE_ROUTING_KEY = "leave.applied.key";
 
     // --- Dead Letter Infrastructure ---
     public static final String DLX_NAME = "leave.dlx";
     public static final String DLQ_NAME = "leave.dlq";
     public static final String DLQ_ROUTING_KEY = "leave.dlq.routing.key";
 
-    // 1. Declare the Core Exchange & DLX
     @Bean
     public TopicExchange leaveExchange() {
         return new TopicExchange(EXCHANGE_NAME);
@@ -30,7 +35,7 @@ public class RabbitMQ {
         return new DirectExchange(DLX_NAME);
     }
 
-    // 2. Declare the Audit Queue with DLX Linking
+    // 1. Employee Queue & Binding
     @Bean
     public Queue auditEmployeeCreatedQueue() {
         return QueueBuilder.durable(AUDIT_QUEUE)
@@ -39,23 +44,30 @@ public class RabbitMQ {
                 .build();
     }
 
-    // 3. Bind the Audit Queue to the Exchange using the Routing Key
     @Bean
     public Binding auditBinding(Queue auditEmployeeCreatedQueue, TopicExchange leaveExchange) {
-        return BindingBuilder.bind(auditEmployeeCreatedQueue)
-                .to(leaveExchange)
-                .with(ROUTING_KEY);
+        return BindingBuilder.bind(auditEmployeeCreatedQueue).to(leaveExchange).with(ROUTING_KEY);
     }
 
-    // 4. JSON Message Converter (UPDATED)
+    // --- NEW: 2. Leave Queue & Binding ---
+    @Bean
+    public Queue auditLeaveAppliedQueue() {
+        return QueueBuilder.durable(AUDIT_LEAVE_QUEUE)
+                .withArgument("x-dead-letter-exchange", DLX_NAME)
+                .withArgument("x-dead-letter-routing-key", DLQ_ROUTING_KEY)
+                .build();
+    }
+
+    @Bean
+    public Binding auditLeaveBinding(Queue auditLeaveAppliedQueue, TopicExchange leaveExchange) {
+        return BindingBuilder.bind(auditLeaveAppliedQueue).to(leaveExchange).with(LEAVE_ROUTING_KEY);
+    }
+
+    // 3. JSON Message Converter
     @Bean
     public MessageConverter jsonMessageConverter() {
         Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter();
-
-        // This is the magic line. It forces RabbitMQ to ignore the sender's class package string
-        // and safely infers the type directly from your @RabbitListener's method signature.
         converter.setTypePrecedence(Jackson2JavaTypeMapper.TypePrecedence.INFERRED);
-
         return converter;
     }
 }

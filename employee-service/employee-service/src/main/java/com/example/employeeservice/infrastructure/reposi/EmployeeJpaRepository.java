@@ -1,4 +1,4 @@
-package com.example.employeeservice.infrastructure.repository;
+package com.example.employeeservice.infrastructure.reposi;
 
 import com.example.employeeservice.infrastructure.entity.EmployeeEntity;
 import org.springframework.data.jpa.repository.JpaRepository;

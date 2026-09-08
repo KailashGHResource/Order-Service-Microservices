@@ -1,7 +1,7 @@
 package com.example.leaveservice.integrationtest;
 
-import com.example.leaveservice.entity.Leave;
-import com.example.leaveservice.repository.LeaveRepository;
+import com.example.leaveservice.infrastructure.entity.LeaveEntity;
+import com.example.leaveservice.infrastructure.repository.LeaveJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -24,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 @ActiveProfiles("test")
 @AutoConfigureWireMock(port = 0)
 @TestPropertySource(properties = {
-        // Point both Feign clients to the dynamic WireMock test port using your exact property names
+        // Point both Feign clients to the dynamic WireMock test port
         "employee-service.url=http://localhost:${wiremock.server.port}",
         "notification-service.url=http://localhost:${wiremock.server.port}"
 })
@@ -34,18 +35,18 @@ class LeaveIntegrationTest {
     private TestRestTemplate restTemplate;
 
     @Autowired
-    private LeaveRepository leaveRepository;
+    private LeaveJpaRepository leaveRepository; // Injected infrastructure repository for deleteAll support
 
-    private Leave savedLeave;
+    private LeaveEntity savedLeave;
 
     @BeforeEach
     void setUp() {
         leaveRepository.deleteAll();
 
-        Leave leave = new Leave();
+        LeaveEntity leave = new LeaveEntity();
         leave.setEmployeeId(105L);
-        leave.setStartDate("2026-12-20");
-        leave.setEndDate("2026-12-26");
+        leave.setStartDate(LocalDate.parse("2026-12-20"));
+        leave.setEndDate(LocalDate.parse("2026-12-26"));
         leave.setStatus("PENDING");
         savedLeave = leaveRepository.save(leave);
     }
@@ -59,12 +60,12 @@ class LeaveIntegrationTest {
 
     @Test
     void testCreateLeaveRequest() {
-        Leave newLeave = new Leave();
+        LeaveEntity newLeave = new LeaveEntity();
         newLeave.setEmployeeId(105L);
-        newLeave.setStartDate("2027-01-10");
-        newLeave.setEndDate("2027-01-15");
+        newLeave.setStartDate(LocalDate.parse("2027-01-10"));
+        newLeave.setEndDate(LocalDate.parse("2027-01-15"));
 
-        ResponseEntity<Leave> response = restTemplate.postForEntity("/api/leaves", newLeave, Leave.class);
+        ResponseEntity<LeaveEntity> response = restTemplate.postForEntity("/api/leaves", newLeave, LeaveEntity.class);
 
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
         assertNotNull(response.getBody());
@@ -74,7 +75,7 @@ class LeaveIntegrationTest {
 
     @Test
     void testGetLeaveWithEmployee() {
-        // 1. STUB: Mock the Employee Client response matching EmployeeDto fields
+        // 1. STUB: Mock the Employee Client response
         stubFor(get(urlEqualTo("/api/employees/105"))
                 .willReturn(aResponse()
                         .withHeader("Content-Type", "application/json")
@@ -116,7 +117,7 @@ class LeaveIntegrationTest {
         stubFor(post(urlEqualTo("/api/notifications"))
                 .willReturn(aResponse().withStatus(200)));
 
-        // 3. EXECUTE: Call the approve endpoint (PUT request)
+        // 3. EXECUTE: Call the approve endpoint
         ResponseEntity<String> response = restTemplate.exchange(
                 "/api/leaves/" + savedLeave.getId() + "/approve",
                 HttpMethod.PUT,
@@ -129,7 +130,7 @@ class LeaveIntegrationTest {
         assertEquals("Leave Approved and Notification Sent to: alice@example.com", response.getBody());
 
         // Verify Database actually updated status to APPROVED
-        Leave updatedLeave = leaveRepository.findById(savedLeave.getId()).get();
+        LeaveEntity updatedLeave = leaveRepository.findById(savedLeave.getId()).get();
         assertEquals("APPROVED", updatedLeave.getStatus());
     }
 }

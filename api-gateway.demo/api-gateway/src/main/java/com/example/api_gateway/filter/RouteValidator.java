@@ -9,13 +9,13 @@ import java.util.function.Predicate;
 @Component
 public class RouteValidator {
 
-    // Endpoints that do NOT require a JWT token
+    // Define endpoints that bypass the Gateway JWT check
     public static final List<String> openApiEndpoints = List.of(
-            "/auth/register",
-            "/auth/token",
+            "/api/v1/employees/login",
             "/eureka"
     );
 
+    // If the request path does NOT contain any of the open endpoints, it is secured
     public Predicate<ServerHttpRequest> isSecured =
             request -> openApiEndpoints
                     .stream()

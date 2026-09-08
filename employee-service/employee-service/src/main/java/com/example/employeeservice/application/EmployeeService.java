@@ -16,7 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import com.example.employeeservice.dto.BulkOperationResponse;
-import com.example.employeeservice.dto.BulkLeaveApprovalDto; // Added Import
+import com.example.employeeservice.dto.BulkLeaveApprovalDto;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -29,6 +29,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+
+// ---> ADDED: Resilience4j Imports <---
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 
 @Slf4j
 @Service
@@ -47,13 +51,24 @@ public class EmployeeService {
         return createEmployee(requestDto);
     }
 
+    // ---> ADDED: Resilience4j Circuit Breaker & Retry for read operations <---
+    @CircuitBreaker(name = "employeeServiceCB", fallbackMethod = "getAllEmployeesFallback")
+    @Retry(name = "employeeServiceRetry")
     public List<EmployeeResponseDto> getAllEmployees() {
+        log.info("--> FETCHING ALL EMPLOYEES FROM DATABASE");
         return employeeRepository.findAll().stream()
                 .map(employeeMapper::toDto)
                 .collect(Collectors.toList());
     }
 
+    // Fallback method for getAllEmployees
+    public List<EmployeeResponseDto> getAllEmployeesFallback(Throwable t) {
+        log.error("Circuit breaker triggered for getAllEmployees! Fallback executed. Reason: {}", t.getMessage());
+        return new ArrayList<>(); // Return empty list gracefully instead of crashing
+    }
+
     @Cacheable(value = "employees", key = "#id")
+    @CircuitBreaker(name = "employeeServiceCB", fallbackMethod = "getEmployeeByIdFallback")
     public EmployeeResponseDto getEmployeeById(Long id) {
         log.info("--> DB FETCH EXECUTED (Cache Miss) for Employee ID: {}", id);
         Employee employee = employeeRepository.findById(id)
@@ -62,6 +77,18 @@ public class EmployeeService {
                     return new RuntimeException("Employee not found with ID: " + id);
                 });
         return employeeMapper.toDto(employee);
+    }
+
+    // Fallback method for getEmployeeById
+    public EmployeeResponseDto getEmployeeByIdFallback(Long id, Throwable t) {
+        log.error("Circuit breaker triggered for getEmployeeById for ID: {}. Fallback executed. Reason: {}", id, t.getMessage());
+        // Return a dummy fallback DTO or handle gracefully
+        return EmployeeResponseDto.builder()
+                .id(id)
+                .firstName("Fallback User")
+                .lastName("Service Unavailable")
+                .email("N/A")
+                .build();
     }
 
     @CachePut(value = "employees", key = "#id")
@@ -75,7 +102,6 @@ public class EmployeeService {
         existingEmployee.setLastName(updatedDetails.getLastName());
         existingEmployee.setEmail(updatedDetails.getEmail());
 
-        // ---> ADDED: Map the version from the client for Optimistic Locking <---
         if (updatedDetails.getVersion() != null) {
             existingEmployee.setVersion(updatedDetails.getVersion());
         }
@@ -105,12 +131,11 @@ public class EmployeeService {
         return employeeRepository.findWithFilters(filter, pageable);
     }
 
+    @CircuitBreaker(name = "employeeServiceCB", fallbackMethod = "createEmployeeFallback")
     public EmployeeResponseDto createEmployee(EmployeeRequestDto requestDto) {
-        // 1. Map to Domain and Save to DB
         Employee domain = employeeMapper.toDomain(requestDto);
         Employee savedEmployee = employeeRepository.save(domain);
 
-        // 2. Build Versioned Event
         EmployeeCreatedEventV1 event = EmployeeCreatedEventV1.builder()
                 .eventId(UUID.randomUUID().toString())
                 .employeeId(savedEmployee.getId())
@@ -120,15 +145,18 @@ public class EmployeeService {
                 .timestamp(LocalDateTime.now())
                 .build();
 
-        // 3. Publish to RabbitMQ Topic Exchange
         log.info("Publishing EmployeeCreatedEventV1 for Employee ID: {}", savedEmployee.getId());
-
         rabbitTemplate.convertAndSend("leave.exchange", "employee.created.key", event);
 
         return employeeMapper.toDto(savedEmployee);
     }
 
-    // --- DAY 4: BULK CREATION WITH PARTIAL FAILURE HANDLING ---
+    // Fallback method for createEmployee (Must match arguments + Throwable)
+    public EmployeeResponseDto createEmployeeFallback(EmployeeRequestDto requestDto, Throwable t) {
+        log.error("Circuit breaker tripped on createEmployee for email: {}. Reason: {}", requestDto.getEmail(), t.getMessage());
+        throw new RuntimeException("Employee Service is currently experiencing high load. Please try again later.");
+    }
+
     public BulkOperationResponse createEmployeesBulk(List<EmployeeRequestDto> requests) {
         log.info("Starting bulk creation for {} employees", requests.size());
 
@@ -159,7 +187,6 @@ public class EmployeeService {
                 .build();
     }
 
-    // --- DAY 4: BULK LEAVE APPROVAL WITH PARTIAL FAILURES ---
     public BulkOperationResponse processBulkLeaveApprovals(List<BulkLeaveApprovalDto> approvalRequests) {
         log.info("Starting bulk leave approval for {} requests", approvalRequests.size());
 
@@ -170,8 +197,6 @@ public class EmployeeService {
             String identifier = "Leave ID: " + request.getLeaveId();
 
             try {
-                // SIMULATED DATABASE CHECK FOR TESTING:
-                // We force ID 999 to fail to prove partial failure handling works.
                 if (request.getLeaveId() == 999) {
                     throw new RuntimeException("Leave request not found in database.");
                 }
@@ -182,7 +207,6 @@ public class EmployeeService {
                 simulatedSavedLeave.put("managerComments", request.getManagerComments());
 
                 successes.add(simulatedSavedLeave);
-
                 log.info("Successfully processed {}", identifier);
 
             } catch (Exception e) {

@@ -1,7 +1,9 @@
 package com.example.departmentservice.integrationtest;
 
-import com.example.departmentservice.Entity.Department;
-import com.example.departmentservice.repository.DepartmentRepository;
+import com.example.departmentservice.dto.DepartmentRequestDto;
+import com.example.departmentservice.dto.DepartmentResponseDto;
+import com.example.departmentservice.infrastructure.entity.DepartmentEntity;
+import com.example.departmentservice.infrastructure.repository.DepartmentJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,9 +27,9 @@ class DepartmentIntegrationTest {
     private TestRestTemplate restTemplate;
 
     @Autowired
-    private DepartmentRepository departmentRepository;
+    private DepartmentJpaRepository departmentRepository;
 
-    private Department savedDepartment;
+    private DepartmentEntity savedDepartment;
 
     @BeforeEach
     void setUp() {
@@ -35,29 +37,37 @@ class DepartmentIntegrationTest {
         departmentRepository.deleteAll();
 
         // Save a default department we can use for GET, PUT, and DELETE tests
-        Department department = new Department();
+        DepartmentEntity department = new DepartmentEntity();
         department.setName("Engineering");
         department.setDescription("Software Development Team");
+        department.setCode("ENG");
         savedDepartment = departmentRepository.save(department);
     }
 
     @Test
     void testGetStatus() {
-        ResponseEntity<String> response = restTemplate.getForEntity("/api/departments/status", String.class);
+        // Updated path to match /api/v1/departments/status
+        ResponseEntity<String> response = restTemplate.getForEntity("/api/v1/departments/status", String.class);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals("Department Service is up and running on port 8082!", response.getBody());
+        // Updated status message to match controller response
+        assertEquals("Department Service V1 is up and running on port 8082!", response.getBody());
     }
 
     @Test
     void testCreateDepartment() {
-        // 1. Prepare data
-        Department newDept = new Department();
+        // 1. Prepare data (Using Request DTO)
+        DepartmentRequestDto newDept = new DepartmentRequestDto();
         newDept.setName("Human Resources");
         newDept.setDescription("HR Team");
+        newDept.setCode("HR");
 
-        // 2. Execute POST request
-        ResponseEntity<Department> response = restTemplate.postForEntity("/api/departments", newDept, Department.class);
+        // 2. Execute POST request expecting Response DTO
+        ResponseEntity<DepartmentResponseDto> response = restTemplate.postForEntity(
+                "/api/v1/departments",
+                newDept,
+                DepartmentResponseDto.class
+        );
 
         // 3. Assert Response
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
@@ -68,10 +78,10 @@ class DepartmentIntegrationTest {
 
     @Test
     void testGetDepartmentById() {
-        // Execute GET request using the ID of the department we saved in setUp()
-        ResponseEntity<Department> response = restTemplate.getForEntity(
-                "/api/departments/" + savedDepartment.getId(),
-                Department.class
+        // Execute GET request using the ID and expecting Response DTO
+        ResponseEntity<DepartmentResponseDto> response = restTemplate.getForEntity(
+                "/api/v1/departments/" + savedDepartment.getId(),
+                DepartmentResponseDto.class
         );
 
         // Assert
@@ -82,19 +92,20 @@ class DepartmentIntegrationTest {
 
     @Test
     void testUpdateDepartment() {
-        // 1. Prepare updated details
-        Department updatedDetails = new Department();
+        // 1. Prepare updated details (Using Request DTO)
+        DepartmentRequestDto updatedDetails = new DepartmentRequestDto();
         updatedDetails.setName("Engineering V2");
         updatedDetails.setDescription("Updated Engineering Description");
+        updatedDetails.setCode("ENG-V2");
 
-        HttpEntity<Department> requestEntity = new HttpEntity<>(updatedDetails);
+        HttpEntity<DepartmentRequestDto> requestEntity = new HttpEntity<>(updatedDetails);
 
-        // 2. Execute PUT request
-        ResponseEntity<Department> response = restTemplate.exchange(
-                "/api/departments/" + savedDepartment.getId(),
+        // 2. Execute PUT request expecting Response DTO
+        ResponseEntity<DepartmentResponseDto> response = restTemplate.exchange(
+                "/api/v1/departments/" + savedDepartment.getId(),
                 HttpMethod.PUT,
                 requestEntity,
-                Department.class
+                DepartmentResponseDto.class
         );
 
         // 3. Assert Response
@@ -103,7 +114,7 @@ class DepartmentIntegrationTest {
         assertEquals("Engineering V2", response.getBody().getName());
 
         // 4. Verify the database was actually updated
-        Department dbDept = departmentRepository.findById(savedDepartment.getId()).get();
+        DepartmentEntity dbDept = departmentRepository.findById(savedDepartment.getId()).get();
         assertEquals("Engineering V2", dbDept.getName());
     }
 
@@ -111,7 +122,7 @@ class DepartmentIntegrationTest {
     void testDeleteDepartment() {
         // 1. Execute DELETE request
         ResponseEntity<String> response = restTemplate.exchange(
-                "/api/departments/" + savedDepartment.getId(),
+                "/api/v1/departments/" + savedDepartment.getId(),
                 HttpMethod.DELETE,
                 null,
                 String.class

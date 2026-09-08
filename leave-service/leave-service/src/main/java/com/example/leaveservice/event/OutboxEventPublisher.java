@@ -9,6 +9,9 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+// ---> ADDED: Transactional Import <---
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.Arrays;
 import java.util.List;
 
@@ -20,6 +23,8 @@ public class OutboxEventPublisher {
     private final OutboxEventRepository outboxRepository;
     private final RabbitTemplate rabbitTemplate;
 
+    // ---> ADDED: Transactional Annotation <---
+    @Transactional
     @Scheduled(fixedDelay = 10000)
     public void publishEvents() {
         // FIXED: Changed OutboxEvent to OutboxEventEntity

@@ -6,7 +6,9 @@ import com.example.employeeservice.application.EmployeeService;
 import com.example.employeeservice.client.DepartmentClient;
 import com.example.employeeservice.client.NotificationClient;
 import com.example.employeeservice.mapper.EmployeeMapper;
+import com.example.employeeservice.security.JwtTokenProvider; // <--- ADDED IMPORT
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -16,7 +18,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +33,7 @@ public class EmployeeControllerV1 {
     private final DepartmentClient departmentClient;
     private final NotificationClient notificationClient;
     private final EmployeeMapper employeeMapper;
+    private final JwtTokenProvider jwtTokenProvider; // <--- ADDED INJECTION
 
     @GetMapping("/status")
     public String getStatus() {
@@ -47,7 +49,10 @@ public class EmployeeControllerV1 {
                 .filter(employee -> employee.getPassword() != null && employee.getPassword().equals(loginRequest.getPassword()))
                 .map(employee -> {
                     log.info("Login successful for Employee ID: {}", employee.getId());
-                    String token = "TOKEN-" + UUID.randomUUID().toString().substring(0, 8);
+
+                    // ---> UPDATED: Generate a real signed JWT token instead of a dummy string <---
+                    List<String> roles = List.of("ADMIN"); // Assigning ADMIN role for seamless testing
+                    String token = jwtTokenProvider.generateTestToken(employee.getEmail(), roles);
 
                     String fullName = employee.getFirstName() + " " + (employee.getLastName() != null ? employee.getLastName() : "");
                     return ResponseEntity.ok(new AuthResponse(token, "Login successful!", employee.getId(), fullName.trim(), employee.getEmail()));
@@ -60,12 +65,9 @@ public class EmployeeControllerV1 {
     }
 
     @PostMapping
-    public ResponseEntity<EmployeeResponseDto> createEmployee(@RequestBody EmployeeRequestDto requestDto) {
+    public ResponseEntity<EmployeeResponseDto> createEmployee(@Valid @RequestBody EmployeeRequestDto requestDto) {
         log.info("Creating new employee with email: {}", requestDto.getEmail());
-
-        // ---> CLEANED UP: Service now handles saving AND RabbitMQ event publishing <---
         EmployeeResponseDto savedEmployee = employeeService.saveEmployee(requestDto);
-
         return ResponseEntity.status(HttpStatus.CREATED).body(savedEmployee);
     }
 
@@ -100,7 +102,7 @@ public class EmployeeControllerV1 {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<EmployeeResponseDto> updateEmployee(@PathVariable Long id, @RequestBody EmployeeRequestDto updatedDetails) {
+    public ResponseEntity<EmployeeResponseDto> updateEmployee(@PathVariable Long id, @Valid @RequestBody EmployeeRequestDto updatedDetails) {
         return ResponseEntity.ok(employeeService.updateEmployee(id, updatedDetails));
     }
 
@@ -143,10 +145,7 @@ public class EmployeeControllerV1 {
     @PostMapping("/bulk")
     public ResponseEntity<BulkOperationResponse> createEmployeesBulk(@RequestBody List<EmployeeRequestDto> requestDtos) {
         log.info("Received REST request for bulk employee creation (Count: {})", requestDtos.size());
-
         BulkOperationResponse response = employeeService.createEmployeesBulk(requestDtos);
-
-        // Return 207 Multi-Status to indicate partial successes/failures are possible
         return ResponseEntity.status(HttpStatus.MULTI_STATUS).body(response);
     }
 
@@ -154,9 +153,7 @@ public class EmployeeControllerV1 {
     @PostMapping("/leaves/bulk-approval")
     public ResponseEntity<BulkOperationResponse> approveLeavesBulk(@RequestBody List<BulkLeaveApprovalDto> requests) {
         log.info("Received REST request for bulk leave approval (Count: {})", requests.size());
-
         BulkOperationResponse response = employeeService.processBulkLeaveApprovals(requests);
-
         return ResponseEntity.status(HttpStatus.MULTI_STATUS).body(response);
     }
 }

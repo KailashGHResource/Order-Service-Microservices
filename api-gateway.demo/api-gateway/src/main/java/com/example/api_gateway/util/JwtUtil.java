@@ -14,13 +14,15 @@ import java.util.Map;
 @Component
 public class JwtUtil {
 
-    public static final String SECRET = "5367566B59703373367639792F423F4528482B4D6251655468576D5A71347437";
+    public static final String SECRET = "ZXhhbXBsZXNlY3JldGtleWZvcmp3dHNpZ25pbmdhbmR2YWxpZGF0aW9ucHVycG9zZXNvbmx5ZXhhbXBsZXNlY3JldGtleWZvcmp3dHNpZ25pbmdhbmR2YWxpZGF0aW9ucHVycG9zZXNvbmx5";
 
     public void validateToken(final String token) {
-        Jwts.parserBuilder().setSigningKey(getSignKey()).build().parseClaimsJws(token);
+        Jwts.parserBuilder()
+                .setSigningKey(getSignKey())
+                .build()
+                .parseClaimsJws(token);
     }
 
-    // --- NEW: Methods to generate tokens for testing ---
     public String generateToken(String userName) {
         Map<String, Object> claims = new HashMap<>();
         return createToken(claims, userName);
@@ -32,7 +34,8 @@ public class JwtUtil {
                 .setSubject(userName)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 30)) // 30 minutes validity
-                .signWith(getSignKey(), SignatureAlgorithm.HS256).compact();
+                .signWith(getSignKey(), SignatureAlgorithm.HS256)
+                .compact();
     }
 
     private Key getSignKey() {

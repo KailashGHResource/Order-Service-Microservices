@@ -85,7 +85,8 @@ public class LeaveService {
         event.setEndDate(savedLeave.getEndDate() != null ? savedLeave.getEndDate().toString() : null);
         event.setEmployeeEmail(employee != null ? employee.getEmail() : null);
 
-        saveOutboxEvent(savedLeave.getId(), "LEAVE_APPLIED_V1", event);
+        // FIXED: Removed "_V1" to match Notification Service queue bindings
+        saveOutboxEvent(savedLeave.getId(), "LEAVE_APPLIED", event);
 
         return leaveMapper.toDto(savedLeave);
     }
@@ -113,7 +114,8 @@ public class LeaveService {
                 leave.setStatus("APPROVED");
                 leaveRepository.save(leave); // Triggers optimistic locking check
 
-                saveOutboxEvent(leave.getId(), "LEAVE_APPROVED_V1", Map.of("leaveId", leave.getId(), "status", "APPROVED"));
+                // FIXED: Removed "_V1" to match Notification Service queue bindings
+                saveOutboxEvent(leave.getId(), "LEAVE_APPROVED", Map.of("leaveId", leave.getId(), "status", "APPROVED"));
                 successfulIds.add(id);
 
             } catch (OptimisticLockingFailureException e) {

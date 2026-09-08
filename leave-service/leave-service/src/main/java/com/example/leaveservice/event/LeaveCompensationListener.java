@@ -1,9 +1,11 @@
 package com.example.leaveservice.event;
+
 import com.example.leaveservice.RabbitMQConfig;
 import com.example.leaveservice.repository.LeaveRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException; // ADD THIS
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +33,8 @@ public class LeaveCompensationListener {
 
         } catch (Exception e) {
             log.error("Failed to process compensation event: {}", e.getMessage(), e);
+            // 👉 NEW: This forces RabbitMQ to route the message to the DLQ!
+            throw new AmqpRejectAndDontRequeueException("Routing message to DLQ due to error", e);
         }
     }
 }
