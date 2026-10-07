@@ -6,6 +6,7 @@ import com.example.order_service.application.OrderEventReplayService;
 import com.example.order_service.domain.Order;
 import com.example.order_service.domain.OrderStatus;
 import com.example.order_service.dto.OrderRequestDto;
+import com.example.order_service.service.IdempotencyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -21,12 +22,45 @@ public class OrderController {
 
     private final OrderCommandService commandService;
     private final OrderQueryService queryService;
-    private final OrderEventReplayService replayService; // Added for Event Replay
+    private final OrderEventReplayService replayService;
+    private final IdempotencyService idempotencyService; // Injected automatically by Lombok
 
     @PostMapping
-    public ResponseEntity<Long> createOrder(@Valid @RequestBody OrderRequestDto request) {
-        Long orderId = commandService.createOrder(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(orderId);
+    public ResponseEntity<?> createOrder(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody OrderRequestDto request) {
+
+        if (idempotencyKey == null || idempotencyKey.trim().isEmpty()) {
+            Long orderId = commandService.createOrder(request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(orderId);
+        }
+
+        // 2. Check if we already processed this request
+        if (idempotencyService.isAlreadyProcessed(idempotencyKey)) {
+            // Return the cached successful response immediately
+            Object cachedResponse = idempotencyService.getCachedResponse(idempotencyKey);
+            return ResponseEntity.ok(cachedResponse);
+        }
+
+        // 3. Prevent concurrent duplicate requests from race conditions
+        if (!idempotencyService.acquireLock(idempotencyKey)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body("A request with this Idempotency-Key is currently being processed.");
+        }
+
+        try {
+            // 4. Process the business logic normally
+            Long orderId = commandService.createOrder(request);
+
+            // 5. Cache the final result
+            idempotencyService.cacheResponse(idempotencyKey, orderId);
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(orderId);
+
+        } finally {
+            // 6. Always release the lock so future retries can hit the cache check
+            idempotencyService.releaseLock(idempotencyKey);
+        }
     }
 
     @GetMapping("/{id}")
@@ -43,12 +77,10 @@ public class OrderController {
 
     @PutMapping("/{id}/cancel")
     public ResponseEntity<String> cancelOrder(@PathVariable Long id) {
-        // Uncommented this so it actually writes to the Event Store!
         commandService.cancelOrder(id);
         return ResponseEntity.ok("Order cancellation event appended to store for ID: " + id);
     }
 
-    // NEW: The Event Replay Endpoint
     @GetMapping("/{id}/replay")
     public ResponseEntity<Order> replayOrderEvents(@PathVariable String id) {
         return ResponseEntity.ok(replayService.reconstructOrderState(id));
