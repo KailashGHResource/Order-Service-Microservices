@@ -19,4 +19,11 @@ Client Request ➔ API Gateway (:8080) ➔ Eureka Service Discovery (:8761) ➔ 
 1. Start infrastructure: PostgreSQL (5432), Kafka (9092), Redis (6379).
 2. Start **Service Registry** (`service-registry`).
 3. Start **Order Service** (`order-service`).
-4. Start **API Gateway** (`api-gateway`).
+4. Start **API Gateway** (`api-gateway`)
+5.
+6. ### Rate Limiting Strategy
+The API Gateway implements a Token Bucket rate-limiting algorithm backed by Redis to protect downstream microservices from burst traffic and abuse.
+* **Key Resolver:** Client IP Address (prevents one user from consuming another user's quota).
+* **Burst Capacity:** 5 requests (maximum allowed in a single burst).
+* **Replenish Rate:** 2 requests per second (steady-state traffic allowance).
+* **Threshold Behavior:** Traffic exceeding the bucket capacity is immediately rejected with an HTTP `429 Too Many Requests` status, bypassing downstream services completely..
