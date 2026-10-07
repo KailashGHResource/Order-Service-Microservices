@@ -27,3 +27,9 @@ The API Gateway implements a Token Bucket rate-limiting algorithm backed by Redi
 * **Burst Capacity:** 5 requests (maximum allowed in a single burst).
 * **Replenish Rate:** 2 requests per second (steady-state traffic allowance).
 * **Threshold Behavior:** Traffic exceeding the bucket capacity is immediately rejected with an HTTP `429 Too Many Requests` status, bypassing downstream services completely..
+### Idempotency Strategy
+To safely handle network timeouts and client retries, the Order Service implements an Idempotent API design using Redis.
+* **Header:** Clients must pass a unique `Idempotency-Key` header (e.g., a UUID) on `POST /api/v1/orders`.
+* **Concurrency Lock:** Redis `setIfAbsent` is used to lock concurrent duplicate requests, preventing race conditions.
+* **Response Caching:** Successful responses are cached in Redis with a 24-hour TTL.
+* **Retry Behavior:** If a duplicate request is detected, the API bypasses the database and Kafka completely, returning the cached successful response with a `200 OK` status instead of creating duplicate business operations.
