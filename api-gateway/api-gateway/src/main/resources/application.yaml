@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: api-gateway
+  data:
+    redis:
+      host: localhost
+      port: 6379
   cloud:
     gateway:
       routes:
@@ -14,6 +18,12 @@ spring:
             - Path=/api/v1/orders/**
           filters:
             - AddRequestHeader=Authorization, Basic Z2F0ZXdheS1zZXJ2aWNlOnN1cGVyLXNlY3JldC1wYXNzd29yZA==
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 2
+                redis-rate-limiter.burstCapacity: 5
+                redis-rate-limiter.requestedTokens: 1
+                key-resolver: "#{@clientIpKeyResolver}"
 
         # Missing User Service Route with Fallback
         - id: user-service-route
