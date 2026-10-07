@@ -21,8 +21,12 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        // 1. Open the door for the login endpoint
-                        .requestMatchers("/api/v1/employees/login").permitAll()
+                        // 1. Open the door for Swagger API Documentation only
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
                         // 2. Secure all other endpoints
                         .anyRequest().authenticated()
                 )

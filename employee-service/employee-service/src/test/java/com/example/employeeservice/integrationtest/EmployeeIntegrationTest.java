@@ -2,13 +2,9 @@ package com.example.employeeservice.integrationtest;
 
 import com.example.employeeservice.client.DepartmentClient;
 import com.example.employeeservice.domain.Employee;
-import com.example.employeeservice.dto.AuthResponse;
-import com.example.employeeservice.dto.DepartmentDto;
-import com.example.employeeservice.dto.EmployeeRequestDto;
-import com.example.employeeservice.dto.EmployeeResponseDto;
-import com.example.employeeservice.dto.LoginRequest;
-import com.example.employeeservice.dto.EmployeeCreatedEventV1;
+import com.example.employeeservice.dto.*;
 import com.example.employeeservice.repository.EmployeeRepository;
+import com.example.employeeservice.security.JwtTokenProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,12 +13,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.cloud.contract.wiremock.AutoConfigureWireMock;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+
+import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,7 +46,7 @@ class EmployeeIntegrationTest {
     private DepartmentClient departmentClient;
 
     @MockBean
-    private RabbitTemplate rabbitTemplate; // Mocked so we can capture and test published events
+    private RabbitTemplate rabbitTemplate;
 
     @Autowired
     private TestRestTemplate restTemplate;
@@ -57,7 +54,11 @@ class EmployeeIntegrationTest {
     @Autowired
     private EmployeeRepository employeeRepository;
 
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
+
     private Employee savedEmployee;
+    private String adminToken;
 
     @BeforeEach
     void setUp() {
@@ -70,13 +71,31 @@ class EmployeeIntegrationTest {
         employee.setPassword("secret123");
         employee.setDepartmentId(99L);
         savedEmployee = employeeRepository.save(employee);
+
+        // Generate a valid JWT for secured test requests
+        adminToken = jwtTokenProvider.generateTestToken("admin@example.com", List.of("ADMIN", "HR"));
+    }
+
+    private HttpEntity<Object> createAuthHeader(Object body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + adminToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return new HttpEntity<>(body, headers);
+    }
+
+    private HttpEntity<Void> createAuthHeader() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + adminToken);
+        return new HttpEntity<>(headers);
     }
 
     // --- V1 API TESTS ---
 
     @Test
     void testGetStatusV1() {
-        ResponseEntity<String> response = restTemplate.getForEntity("/api/v1/employees/status", String.class);
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/v1/employees/status", HttpMethod.GET, createAuthHeader(), String.class
+        );
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("Employee Service is up and running on port 8081!", response.getBody());
     }
@@ -107,7 +126,9 @@ class EmployeeIntegrationTest {
         newEmp.setPassword("password123");
         newEmp.setDepartmentId(1L);
 
-        ResponseEntity<EmployeeResponseDto> response = restTemplate.postForEntity("/api/v1/employees", newEmp, EmployeeResponseDto.class);
+        ResponseEntity<EmployeeResponseDto> response = restTemplate.exchange(
+                "/api/v1/employees", HttpMethod.POST, createAuthHeader(newEmp), EmployeeResponseDto.class
+        );
 
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
         assertNotNull(response.getBody());
@@ -123,7 +144,8 @@ class EmployeeIntegrationTest {
 
         when(departmentClient.getDepartmentById(99L)).thenReturn(mockDepartment);
 
-        mockMvc.perform(get("/api/v1/employees/" + savedEmployee.getId() + "/with-department"))
+        mockMvc.perform(get("/api/v1/employees/" + savedEmployee.getId() + "/with-department")
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.employee.firstName").value("John"))
                 .andExpect(jsonPath("$.employee.lastName").value("Doe"))
@@ -142,8 +164,8 @@ class EmployeeIntegrationTest {
         requestDto.setPassword("secure123");
         requestDto.setDepartmentId(1L);
 
-        ResponseEntity<EmployeeResponseDto> response = restTemplate.postForEntity(
-                "/api/v1/employees", requestDto, EmployeeResponseDto.class
+        ResponseEntity<EmployeeResponseDto> response = restTemplate.exchange(
+                "/api/v1/employees", HttpMethod.POST, createAuthHeader(requestDto), EmployeeResponseDto.class
         );
 
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
@@ -172,14 +194,18 @@ class EmployeeIntegrationTest {
 
     @Test
     void testGetStatusV2() {
-        ResponseEntity<String> response = restTemplate.getForEntity("/api/v2/employees/status", String.class);
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/v2/employees/status", HttpMethod.GET, createAuthHeader(), String.class
+        );
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("Employee Service V2 is up and running!", response.getBody());
     }
 
     @Test
     void testSearchEmployeesV2() {
-        ResponseEntity<String> response = restTemplate.getForEntity("/api/v2/employees/search?firstName=John", String.class);
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/v2/employees/search?firstName=John", HttpMethod.GET, createAuthHeader(), String.class
+        );
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
     }

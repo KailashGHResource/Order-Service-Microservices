@@ -2,6 +2,7 @@ package com.example.employeeservice.controller;
 
 import com.example.employeeservice.domain.Employee;
 import com.example.employeeservice.repository.EmployeeRepository;
+import com.example.employeeservice.security.JwtTokenProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.jpa.hibernate.ddl-auto=update",
         "spring.config.import="
 })
-@AutoConfigureMockMvc(addFilters = false)
+@AutoConfigureMockMvc(addFilters = false) // Bypasses security filters for pure performance throughput testing
 class EmployeeApiPerformanceTest {
 
     @Autowired
@@ -46,11 +48,9 @@ class EmployeeApiPerformanceTest {
 
     @BeforeEach
     void setUp() {
-        // Clear cache and database to ensure a clean test environment
         cacheManager.getCache("employees").clear();
         employeeRepository.deleteAll();
 
-        // Insert one real employee into the test database
         Employee employee = new Employee();
         employee.setFirstName("LoadTest");
         employee.setLastName("User");
@@ -64,19 +64,16 @@ class EmployeeApiPerformanceTest {
 
     @Test
     void givenHighLoad_whenGetEmployeeApi_thenHandle100ConcurrentRequestsQuickly() throws InterruptedException {
-        // Arrange
         int threadCount = 100;
-        ExecutorService executorService = Executors.newFixedThreadPool(30); // 30 active threads hitting the API simultaneously
+        ExecutorService executorService = Executors.newFixedThreadPool(30);
         CountDownLatch latch = new CountDownLatch(threadCount);
         AtomicInteger successCount = new AtomicInteger(0);
 
         long startTime = System.currentTimeMillis();
 
-        // Act: Blast the V1 API with 100 concurrent GET requests
         for (int i = 0; i < threadCount; i++) {
             executorService.submit(() -> {
                 try {
-                    // Make sure the path matches your EmployeeControllerV1
                     mockMvc.perform(get("/api/v1/employees/" + testEmployeeId))
                             .andExpect(status().isOk());
                     successCount.incrementAndGet();
@@ -88,20 +85,16 @@ class EmployeeApiPerformanceTest {
             });
         }
 
-        // Wait for all 100 requests to finish (timeout after 10 seconds to prevent infinite hangs)
         boolean completed = latch.await(10, TimeUnit.SECONDS);
         executorService.shutdown();
 
         long endTime = System.currentTimeMillis();
         long totalExecutionTime = endTime - startTime;
 
-        // Assert
         assertThat(completed).isTrue();
         assertThat(successCount.get()).isEqualTo(threadCount);
 
-        // Verify incredible performance.
-        // 100 requests should easily complete in under 2000ms because 99 of them hit the Redis cache!
-        System.out.println("🔥 DAY 4 PERFORMANCE TEST RESULT: 100 concurrent requests processed in " + totalExecutionTime + " ms");
+        System.out.println("🔥 DAY 5 PERFORMANCE TEST RESULT: 100 concurrent requests processed in " + totalExecutionTime + " ms");
         assertThat(totalExecutionTime).isLessThan(2000);
     }
 }
