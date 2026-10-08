@@ -36,4 +36,7 @@ To safely handle network timeouts and client retries, the Order Service implemen
 - **Retry Behavior:** If a duplicate request is detected, the API bypasses the database and Kafka completely, returning the cached successful response with a `200 OK` status instead of creating duplicate business operations.
 
 ### Distributed Tracing & Observability
-To diagnose production failures across decentralized microservices, this
+To diagnose production failures across decentralized microservices, this architecture implements hybrid structured logging using MDC and Micrometer Tracing.
+- **Correlation IDs (HTTP Perimeter):** The API Gateway injects an `X-Correlation-ID` header into every request. The Order Service's `CorrelationIdFilter` captures this and maps it to the Thread's MDC, linking the Gateway request directly to the Order Service's business logic.
+- **Trace IDs (Kafka Perimeter):** Because `ThreadLocal` MDC context does not transfer across asynchronous Kafka boundaries, the system utilizes Micrometer Tracing (Brave). Micrometer automatically injects a `traceparent` header into the Kafka producer records, ensuring `traceId` remains consistent across the `KafkaSagaConsumer`, `MockSagaEventSimulator`, and Outbox Poller.
+- **Log Formatting:** Application logs are formatted with `%5p [Trace:%X{traceId:-}, CorrID:%X{correlationId:-}]` to instantly link HTTP and Kafka traces end-to-end.
