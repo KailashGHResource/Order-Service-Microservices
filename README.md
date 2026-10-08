@@ -6,14 +6,14 @@ A distributed microservices architecture built with Spring Boot 3.3, Spring Clou
 Client Request ➔ API Gateway (:8080) ➔ Eureka Service Discovery (:8761) ➔ Order Service (:8086)
 
 ### Included Services
-* **Service Registry (`service-registry`):** Netflix Eureka server for dynamic service registration and discovery (Port: 8761).
-* **API Gateway (`api-gateway`):** Central entry point featuring Spring Cloud Gateway, dynamic routing via `lb://`, distributed correlation ID tracing filter, and Resilience4j circuit breaker fallbacks (Port: 8080).
-* **Order Service (`order-service`):** Core business microservice handling order management, persistence with PostgreSQL, distributed caching/locking with Redis, and Kafka event streaming (Port: 8086).
+- **Service Registry (`service-registry`):** Netflix Eureka server for dynamic service registration and discovery (Port: 8761).
+- **API Gateway (`api-gateway`):** Central entry point featuring Spring Cloud Gateway, dynamic routing via `lb://`, distributed correlation ID tracing filter, and Resilience4j circuit breaker fallbacks (Port: 8080).
+- **Order Service (`order-service`):** Core business microservice handling order management, persistence with PostgreSQL, distributed caching/locking with Redis, and Kafka event streaming (Port: 8086).
 
 ## 🚀 Key Features
-* **Dynamic Routing & Load Balancing:** Microservices discoverable via Eureka using `lb://` URIs.
-* **Observability & Tracing:** Custom `GlobalFilter` injecting and propagating `X-Correlation-ID`.
-* **Fault Tolerance:** Resilience4j Circuit Breaker redirecting unprovisioned downstream calls to localized 503 fallback handlers.
+- **Dynamic Routing & Load Balancing:** Microservices discoverable via Eureka using `lb://` URIs.
+- **Observability & Tracing:** Custom `GlobalFilter` injecting and propagating `X-Correlation-ID`.
+- **Fault Tolerance:** Resilience4j Circuit Breaker redirecting unprovisioned downstream calls to localized 503 fallback handlers.
 
 ## ⚙️ How to Run Locally
 1. Start infrastructure: PostgreSQL (5432), Kafka (9092), Redis (6379).
@@ -23,13 +23,17 @@ Client Request ➔ API Gateway (:8080) ➔ Eureka Service Discovery (:8761) ➔ 
   
 ### Rate Limiting Strategy
 The API Gateway implements a Token Bucket rate-limiting algorithm backed by Redis to protect downstream microservices from burst traffic and abuse.
-* **Key Resolver:** Client IP Address (prevents one user from consuming another user's quota).
-* **Burst Capacity:** 5 requests (maximum allowed in a single burst).
-* **Replenish Rate:** 2 requests per second (steady-state traffic allowance).
-* **Threshold Behavior:** Traffic exceeding the bucket capacity is immediately rejected with an HTTP `429 Too Many Requests` status, bypassing downstream services completely..
+- **Key Resolver:** Client IP Address (prevents one user from consuming another user's quota).
+- **Burst Capacity:** 5 requests (maximum allowed in a single burst).
+- **Replenish Rate:** 2 requests per second (steady-state traffic allowance).
+- **Threshold Behavior:** Traffic exceeding the bucket capacity is immediately rejected with an HTTP `429 Too Many Requests` status, bypassing downstream services completely.
+
 ### Idempotency Strategy
 To safely handle network timeouts and client retries, the Order Service implements an Idempotent API design using Redis.
-* **Header:** Clients must pass a unique `Idempotency-Key` header (e.g., a UUID) on `POST /api/v1/orders`.
-* **Concurrency Lock:** Redis `setIfAbsent` is used to lock concurrent duplicate requests, preventing race conditions.
-* **Response Caching:** Successful responses are cached in Redis with a 24-hour TTL.
-* **Retry Behavior:** If a duplicate request is detected, the API bypasses the database and Kafka completely, returning the cached successful response with a `200 OK` status instead of creating duplicate business operations.
+- **Header:** Clients must pass a unique `Idempotency-Key` header (e.g., a UUID) on `POST /api/v1/orders`.
+- **Concurrency Lock:** Redis `setIfAbsent` is used to lock concurrent duplicate requests, preventing race conditions.
+- **Response Caching:** Successful responses are cached in Redis with a 24-hour TTL.
+- **Retry Behavior:** If a duplicate request is detected, the API bypasses the database and Kafka completely, returning the cached successful response with a `200 OK` status instead of creating duplicate business operations.
+
+### Distributed Tracing & Observability
+To diagnose production failures across decentralized microservices, this
