@@ -94,7 +94,7 @@ management:
 # Automatically add Trace ID and Span ID to your console log outputs!
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+    level: "%5p [${spring.application.name:}, Trace:%X{traceId:-}, CorrID:%X{correlationId:-}]"
 
 # ===============================
 # KAFKA CONFIGURATION
