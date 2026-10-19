@@ -23,42 +23,38 @@ public class OrderController {
     private final OrderCommandService commandService;
     private final OrderQueryService queryService;
     private final OrderEventReplayService replayService;
-    private final IdempotencyService idempotencyService; // Injected automatically by Lombok
+    private final IdempotencyService idempotencyService;
 
     @PostMapping
     public ResponseEntity<?> createOrder(
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            // DAY 1 UPDATE: Enforced strictly by Spring. Missing header -> 400 Bad Request via GlobalExceptionHandler
+            @RequestHeader(value = "Idempotency-Key", required = true) String idempotencyKey,
             @Valid @RequestBody OrderRequestDto request) {
 
-        if (idempotencyKey == null || idempotencyKey.trim().isEmpty()) {
-            Long orderId = commandService.createOrder(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(orderId);
-        }
-
-        // 2. Check if we already processed this request
+        // 1. Check if we already processed this request
         if (idempotencyService.isAlreadyProcessed(idempotencyKey)) {
             // Return the cached successful response immediately
             Object cachedResponse = idempotencyService.getCachedResponse(idempotencyKey);
             return ResponseEntity.ok(cachedResponse);
         }
 
-        // 3. Prevent concurrent duplicate requests from race conditions
+        // 2. Prevent concurrent duplicate requests from race conditions
         if (!idempotencyService.acquireLock(idempotencyKey)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body("A request with this Idempotency-Key is currently being processed.");
         }
 
         try {
-            // 4. Process the business logic normally
+            // 3. Process the business logic normally
             Long orderId = commandService.createOrder(request);
 
-            // 5. Cache the final result
+            // 4. Cache the final result
             idempotencyService.cacheResponse(idempotencyKey, orderId);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(orderId);
 
         } finally {
-            // 6. Always release the lock so future retries can hit the cache check
+            // 5. Always release the lock so future retries can hit the cache check
             idempotencyService.releaseLock(idempotencyKey);
         }
     }
